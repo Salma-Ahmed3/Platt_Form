@@ -1,6 +1,6 @@
 import 'package:bloc/bloc.dart';
 import 'package:nowproject/cubit/Signup/signup_state.dart';
-import 'package:nowproject/services/services.dart';
+import 'package:nowproject/services/app_services.dart';
 
 class SignUpCubit extends Cubit<SignUpState> {
   SignUpCubit() : super(SignUpInitial());

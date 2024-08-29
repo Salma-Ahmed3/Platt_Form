@@ -1,13 +1,10 @@
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
-import 'package:nowproject/components/constant/constant.dart';
-import 'package:nowproject/helper/local_store.dart';
-import 'package:nowproject/utility/app_info.dart';
 import 'package:nowproject/utility/app_setting.dart';
-// import 'package:nowproject/utility/app_setting.dart';
-import 'package:nowproject/utility/local_storge_key.dart';
+import 'package:pretty_http_logger/pretty_http_logger.dart';
 
 class AppService {
   static String apikey =
@@ -15,76 +12,69 @@ class AppService {
   static String apiRequestHTML = "RequestTemplate,";
   static String platform = getPlatformName();
 
-  ///[actionType] The type of the action get or post
-  ///[apiName] The api url name api/controller/method
-  ///[body] The data send with post request
-
-  static String getPlatformName() {
-    if (kIsWeb) {
-      return "Android";
-    } else {
-      return Platform.operatingSystem.toString();
-    }
-  }
-
-    static Future<http.Response> callService({
+  static Future<Map<String, dynamic>?> callService({
     required ActionType actionType,
     required String apiName,
-    String? umbracoUrl,
+    Map<String, dynamic>? query,
     required Map<String, dynamic> body,
   }) async {
     Random random = Random();
-    int timeX = (1000 + random.nextInt(1000));
-    var apiUrl = umbracoUrl != null
-        ? Uri.parse("$umbracoUrl$apiName")
-        : Uri.parse("${AppSetting.serviceURL}$apiName");
-
+    String lang = 'ar';
+    int timeX = 1000 + random.nextInt(1000);
+    var apiUrl = Uri.https(
+      AppSetting.serviceURL,
+      "$lang/api/$apiName",
+      query,
+    );
     var header = {
       "content-type": 'application/json',
       "TimeX": timeX.toString(),
       "cache-control": "no-cache",
       "SignAuth": "$apikey${getSignature(apiUrl, timeX)}",
       "platform": platform,
-      "version": AppInfo.packageInfo.version,
-      "source": "1",
-      "Accept": 'application/json, text/plain, /',
+      "version": '7.0.0',
+      "source": "3",
+      "Accept": 'application/json, text/plain, */*',
     };
 
-    if (!checkIfNotLogin(apiUrl.toString())) {
-      String? token = await getStoredToken();
-      if (token != null) {
-        header.update('Authorization', (value) => "bearer $token",
-            ifAbsent: () => "bearer $token");
+    try {
+      final result = await InternetAddress.lookup('google.com');
+      if (result.isNotEmpty && result[0].rawAddress.isNotEmpty) {
+        HttpWithMiddleware http = HttpWithMiddleware.build(
+          middlewares: [
+            HttpLogger(
+              logLevel: LogLevel.BODY,
+            ),
+          ],
+        );
+
+        final response = actionType == ActionType.get
+            ? await http.get(apiUrl, headers: header)
+            : await http.post(apiUrl, headers: header, body: json.encode(body));
+
+        if (response.statusCode == 200) {
+          return json.decode(response.body);
+        } else {
+          return {
+            'status': response.statusCode,
+            'message': 'Request failed with status: ${response.statusCode}',
+          };
+        }
+      } else {
+        return {
+          'status': 500,
+          'message': 'No internet connection.',
+        };
       }
-    }
-
-    http.Response response;
-    if (actionType == ActionType.post) {
-      response = await http.post(apiUrl, headers: header, body: jsonEncode(body));
-    } else if (actionType == ActionType.get) {
-      response = await http.get(apiUrl, headers: header);
-    } else if (actionType == ActionType.put) {
-      response = await http.put(apiUrl, headers: header, body: jsonEncode(body));
-    } else {
-      throw Exception("Invalid ActionType");
-    }
-
-    return response;
-  }
-
-  static getStoredToken() async {
-    String? storedToken =
-        await AppLocalStore.getString(LocalStoreNames.appToken);
-    if (storedToken != null) {
-      var token = jsonDecode(storedToken);
-
-      return token["access_token"].toString();
-    } else {
-      return null;
+    } catch (e) {
+      return {
+        'status': 500,
+        'message': 'An error occurred: $e',
+      };
     }
   }
 
-  static String getSignature(url, int key) {
+  static String getSignature(Uri url, int key) {
     int x = url.toString().split('/').length;
     int y = url.toString().split('?').length;
     int portion1 = 2 * key;
@@ -103,18 +93,9 @@ class AppService {
     return sign.toString();
   }
 
-  static checkIfNotLogin(String apiUrl) {
-    if (apiUrl.contains('login') ||
-        apiUrl.contains('ResetPassword') ||
-        apiUrl.contains('ReGenrateCode') ||
-        apiUrl.contains('register') ||
-        apiUrl.contains('VerifyCode') ||
-        apiUrl.contains('ForgotPassword')) {
-      return true;
-    } else {
-      return false;
-    }
+  static String getPlatformName() {
+    return kIsWeb ? "Web" : Platform.operatingSystem;
   }
 }
 
-enum ActionType { get, post, put }
+enum ActionType { get, post }

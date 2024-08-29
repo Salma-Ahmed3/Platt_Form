@@ -23,5 +23,5 @@ class PlattForm extends StatelessWidget {
         // initialRoute: HomeView.routeName,
       ),
     );
-    }
-    }
+  }
+}
